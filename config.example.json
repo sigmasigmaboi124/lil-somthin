@@ -1,0 +1,15 @@
+{
+  "bot_token": "YOUR_DISCORD_BOT_TOKEN_HERE",
+  "owner_id": 0,
+  "status_channel_id": 0,
+  "repo_owner": "sigmasigmaboi124",
+  "repo_name": "lil-somthin",
+  "current_version": "2.6.2",
+  "macro_path": "Goated-Macro/Goated Macro/main.exe",
+  "strategies_path": "Goated-Macro/Goated Macro/strategies",
+  "private_server_link": "",
+  "timescale_tickets": 0,
+  "macro_speed": 1.0,
+  "restart_interval_minutes": 60,
+  "stop_after_run": 0
+}
