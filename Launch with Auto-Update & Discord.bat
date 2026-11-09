@@ -1,5 +1,5 @@
 @echo off
-title TDS Macro Launcher with Auto-Update ^& Discord Remote
+title Goated Macro Launcher ^& Auto-Updater
 cd /d "%~dp0"
 python launcher.py
-pause
+if errorlevel 1 pause

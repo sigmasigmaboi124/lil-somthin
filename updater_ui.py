@@ -1,5 +1,12 @@
 import os
 import sys
+
+# Prevent Windows cmd code-page crash (cp1252 UnicodeEncodeError)
+if sys.stdout and hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+if sys.stderr and hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
 import json
 import time
 import zipfile
@@ -120,6 +127,9 @@ class UpdaterUI(tk.Tk):
         time.sleep(0.5)
         api_url = f"https://api.github.com/repos/{self.repo_owner}/{self.repo_name}/releases/latest"
         headers = {"User-Agent": "TDS-Macro-Updater/1.0", "Accept": "application/vnd.github.v3+json"}
+        token = self.cfg.get("github_token", "")
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
         
         try:
             res = requests.get(api_url, headers=headers, timeout=6)
@@ -244,13 +254,19 @@ del "%~f0" & exit
         sys.exit(0)
 
     def finish(self):
-        self.destroy()
-        if self.on_finish:
-            self.on_finish()
+        try:
+            self.after(0, self.destroy)
+        except Exception:
+            try:
+                self.destroy()
+            except Exception:
+                pass
 
 def start_updater_check(on_finish=None):
-    app = UpdaterUI(on_finish=on_finish)
+    app = UpdaterUI()
     app.mainloop()
+    if on_finish:
+        on_finish()
 
 if __name__ == "__main__":
     start_updater_check()
