@@ -84,79 +84,6 @@ def get_available_strategies():
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ----------------- Interactive UI Components -----------------
-
-class ConfigDropdown(discord.ui.Select):
-    def __init__(self, strategies):
-        options = [
-            discord.SelectOption(label=strat[:100], description=f"Load {strat[:50]}", emoji="📁")
-            for strat in strategies[:25] # Discord limit 25 options
-        ]
-        super().__init__(placeholder="Select a Strategy / Config...", min_values=1, max_values=1, options=options)
-
-    async def callback(self, interaction: discord.Interaction):
-        selected = self.values[0]
-        session_state["active_config"] = selected
-        log_event(f"Strategy changed to: {selected}")
-        await interaction.response.send_message(f"✅ Strategy successfully changed to **{selected}**!", ephemeral=True)
-
-class ConfigSelectView(discord.ui.View):
-    def __init__(self, strategies):
-        super().__init__(timeout=120)
-        self.add_item(ConfigDropdown(strategies))
-
-class DashboardButtons(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-
-    @discord.ui.button(label="Start", style=discord.ButtonStyle.success, emoji="▶️", custom_id="btn_start")
-    async def btn_start(self, interaction: discord.Interaction, button: discord.ui.Button):
-        session_state["is_running"] = True
-        session_state["is_paused"] = False
-        log_event("Macro started via Discord button")
-        await interaction.response.send_message("▶️ **Macro Started!**", ephemeral=True)
-
-    @discord.ui.button(label="Pause/Resume", style=discord.ButtonStyle.secondary, emoji="⏸️", custom_id="btn_pause")
-    async def btn_pause(self, interaction: discord.Interaction, button: discord.ui.Button):
-        session_state["is_paused"] = not session_state["is_paused"]
-        state_txt = "Paused" if session_state["is_paused"] else "Resumed"
-        log_event(f"Macro {state_txt} via Discord button")
-        await interaction.response.send_message(f"⏸️ **Macro {state_txt}!**", ephemeral=True)
-
-    @discord.ui.button(label="Stop", style=discord.ButtonStyle.danger, emoji="⏹️", custom_id="btn_stop")
-    async def btn_stop(self, interaction: discord.Interaction, button: discord.ui.Button):
-        session_state["is_running"] = False
-        log_event("Macro stopped via Discord button")
-        await interaction.response.send_message("⏹️ **Macro Stopped!**", ephemeral=True)
-
-    @discord.ui.button(label="Screenshot", style=discord.ButtonStyle.primary, emoji="📸", custom_id="btn_screenshot")
-    async def btn_screenshot(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.defer(ephemeral=False)
-        try:
-            img = ImageGrab.grab()
-            buf = io.BytesIO()
-            img.save(buf, format="PNG")
-            buf.seek(0)
-            file = discord.File(buf, filename="screen.png")
-            await interaction.followup.send("📸 **Current Screen Preview:**", file=file)
-        except Exception as e:
-            await interaction.followup.send(f"❌ Failed to take screenshot: {e}")
-
-    @discord.ui.button(label="Stats", style=discord.ButtonStyle.secondary, emoji="📊", custom_id="btn_stats")
-    async def btn_stats(self, interaction: discord.Interaction, button: discord.ui.Button):
-        embed = build_stats_embed()
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    @discord.ui.button(label="Rejoin", style=discord.ButtonStyle.primary, emoji="🔄", custom_id="btn_rejoin")
-    async def btn_rejoin(self, interaction: discord.Interaction, button: discord.ui.Button):
-        log_event("Rejoining Roblox session...")
-        cfg = load_config()
-        ps_link = cfg.get("private_server_link", "")
-        if ps_link:
-            os.system(f'start "" "{ps_link}"')
-            await interaction.response.send_message("🔄 Rejoining via Private Server link!", ephemeral=True)
-        else:
-            await interaction.response.send_message("⚠️ No private server link configured in `/privateserver`.", ephemeral=True)
 
 # ----------------- Helper Functions -----------------
 
@@ -178,7 +105,7 @@ def build_status_embed():
     embed.add_field(name="⏱️ Uptime", value=f"`{uptime_str}`", inline=True)
     embed.add_field(name="🏆 Total Runs", value=f"`{session_state['total_runs']}`", inline=True)
     embed.add_field(name="🛑 Stop After", value=f"`{session_state['stop_after_run'] or 'Off'}`", inline=True)
-    embed.set_footer(text="Use buttons below for quick actions")
+    embed.set_footer(text="Roblox TDS Remote Control")
     return embed
 
 def build_stats_embed():
@@ -220,11 +147,10 @@ async def watchdog_task():
 
 # ----------------- Slash Commands -----------------
 
-@bot.tree.command(name="status", description="Show live macro status dashboard with interactive buttons")
+@bot.tree.command(name="status", description="Show live macro status")
 async def cmd_status(interaction: discord.Interaction):
     embed = build_status_embed()
-    view = DashboardButtons()
-    await interaction.response.send_message(embed=embed, view=view)
+    await interaction.response.send_message(embed=embed)
 
 @bot.tree.command(name="screenshot", description="Capture the current screen of the macro / Roblox window")
 async def cmd_screenshot(interaction: discord.Interaction):
@@ -293,11 +219,17 @@ async def cmd_rejoin(interaction: discord.Interaction):
     else:
         await interaction.response.send_message("⚠️ Set private server link first via `/privateserver`.")
 
-@bot.tree.command(name="configs", description="List available strategies and open dropdown selector")
+@bot.tree.command(name="configs", description="List available strategies")
 async def cmd_configs(interaction: discord.Interaction):
     strategies = get_available_strategies()
-    view = ConfigSelectView(strategies)
-    await interaction.response.send_message("Select a strategy from the dropdown below:", view=view)
+    strat_list = "\n".join([f"• `{s}`" for s in strategies])
+    embed = discord.Embed(
+        title="📁 Available Strategies",
+        description=strat_list if strat_list else "No strategies found.",
+        color=0x5865F2
+    )
+    embed.set_footer(text="Use /config <name> to set active strategy")
+    await interaction.response.send_message(embed=embed)
 
 @bot.tree.command(name="config", description="Set active strategy by name")
 @app_commands.describe(strategy_name="Name of strategy folder")
