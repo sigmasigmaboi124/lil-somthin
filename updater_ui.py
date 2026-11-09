@@ -38,6 +38,24 @@ def save_config(cfg):
     except Exception as e:
         print(f"Failed to save config: {e}")
 
+def get_git_credential_token():
+    """Retrieve GitHub token from Windows Credential Manager if repository is private."""
+    try:
+        p = subprocess.Popen(
+            ['git', 'credential', 'fill'],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        out, _ = p.communicate(input='protocol=https\nhost=github.com\n\n', timeout=3)
+        for line in out.splitlines():
+            if line.startswith('password='):
+                return line.split('=', 1)[1].strip()
+    except Exception:
+        pass
+    return ""
+
 class UpdaterUI(tk.Tk):
     def __init__(self, on_finish=None, force_check=False):
         super().__init__()
@@ -49,7 +67,7 @@ class UpdaterUI(tk.Tk):
         self.repo_name = self.cfg.get("repo_name", "lil-somthin")
 
         # Window Appearance
-        self.title("TDS Macro Launcher & Updater")
+        self.title("Goated Macro Launcher & Updater")
         self.geometry("460x250")
         self.resizable(False, False)
         self.configure(bg="#181825")
@@ -71,7 +89,7 @@ class UpdaterUI(tk.Tk):
         # Header Title
         self.lbl_title = tk.Label(
             self,
-            text="TDS Macro & Remote Control",
+            text="Goated Macro & Remote Control",
             font=("Segoe UI", 14, "bold"),
             fg="#cdd6f4",
             bg="#181825"
@@ -101,7 +119,7 @@ class UpdaterUI(tk.Tk):
         # Details / Subtext
         self.lbl_detail = tk.Label(
             self,
-            text=f"Installed Version: v{self.current_ver} | Repo: {self.repo_owner}/{self.repo_name}",
+            text=f"Installed Version: v{self.current_ver} | By: koma",
             font=("Segoe UI", 9),
             fg="#6c7086",
             bg="#181825"
@@ -126,13 +144,13 @@ class UpdaterUI(tk.Tk):
     def run_check_flow(self):
         time.sleep(0.5)
         api_url = f"https://api.github.com/repos/{self.repo_owner}/{self.repo_name}/releases/latest"
-        headers = {"User-Agent": "TDS-Macro-Updater/1.0", "Accept": "application/vnd.github.v3+json"}
-        token = self.cfg.get("github_token", "")
+        headers = {"User-Agent": "Goated-Macro-Updater/1.0", "Accept": "application/vnd.github.v3+json"}
+        token = self.cfg.get("github_token", "") or get_git_credential_token()
         if token:
             headers["Authorization"] = f"Bearer {token}"
         
         try:
-            res = requests.get(api_url, headers=headers, timeout=6)
+            res = requests.get(api_url, headers=headers, timeout=8)
             if res.status_code == 200:
                 release_data = res.json()
                 latest_tag = release_data.get("tag_name", "").lstrip("v")
@@ -140,20 +158,31 @@ class UpdaterUI(tk.Tk):
                 if latest_tag and self.is_newer_version(latest_tag, self.current_ver):
                     # Found update! Look for zip package
                     assets = release_data.get("assets", [])
-                    zip_asset = next((a for a in assets if a.get("name", "").endswith(".zip")), None)
+                    zip_asset = next((a for a in assets if a.get("name", "").lower().endswith(".zip")), None)
                     if zip_asset:
-                        dl_url = zip_asset.get("browser_download_url")
-                        self.download_and_apply(dl_url, latest_tag, release_data.get("name", ""))
+                        if token and zip_asset.get("url"):
+                            dl_url = zip_asset.get("url")
+                            dl_headers = {
+                                "User-Agent": "Goated-Macro-Updater/1.0",
+                                "Authorization": f"Bearer {token}",
+                                "Accept": "application/octet-stream"
+                            }
+                        else:
+                            dl_url = zip_asset.get("browser_download_url")
+                            dl_headers = {"User-Agent": "Goated-Macro-Updater/1.0"}
+                        self.download_and_apply(dl_url, latest_tag, release_data.get("name", ""), dl_headers)
                         return
 
             elif res.status_code == 404:
-                # Repo is private or release not created yet
-                pass
-            
+                # Repo is private or release not found
+                if not token:
+                    self.update_status("Repository is Private", "Please make repository Public on GitHub to allow updates", color="#fab387")
+                    time.sleep(2)
+
             # If we reached here, no update needed or no release package found
             self.progress.stop()
             self.progress.config(mode="determinate", value=100)
-            self.update_status(f"App is up to date! (v{self.current_ver})", "Launching macro...", color="#a6e3a1")
+            self.update_status(f"App is up to date! (v{self.current_ver})", "Launching Goated Macro...", color="#a6e3a1")
             time.sleep(1.2)
             self.finish()
 
@@ -171,22 +200,25 @@ class UpdaterUI(tk.Tk):
         except Exception:
             return latest > current
 
-    def download_and_apply(self, download_url, new_ver, release_title):
+    def download_and_apply(self, download_url, new_ver, release_title, headers=None):
         self.progress.stop()
         self.progress.config(mode="determinate", value=0)
         self.update_status(f"New Version Found: v{new_ver}!", "Preparing download...", color="#89b4fa")
 
-        temp_dir = os.path.join(os.environ.get("TEMP", "."), "tds_macro_update")
+        temp_dir = os.path.join(os.environ.get("TEMP", "."), "goated_macro_update")
         os.makedirs(temp_dir, exist_ok=True)
         zip_path = os.path.join(temp_dir, "release.zip")
 
         try:
-            req = requests.get(download_url, stream=True, timeout=30)
+            req = requests.get(download_url, headers=headers or {}, stream=True, timeout=60)
+            if req.status_code != 200:
+                raise RuntimeError(f"HTTP {req.status_code} while downloading release asset")
+
             total_size = int(req.headers.get("content-length", 0))
             downloaded = 0
 
             with open(zip_path, "wb") as f:
-                for chunk in req.iter_content(chunk_size=16384):
+                for chunk in req.iter_content(chunk_size=65536):
                     if chunk:
                         f.write(chunk)
                         downloaded += len(chunk)
@@ -196,7 +228,7 @@ class UpdaterUI(tk.Tk):
                             tot_mb = total_size / (1024 * 1024)
                             self.progress["value"] = pct
                             self.lbl_status.config(text=f"Downloading update v{new_ver}: {pct}%")
-                            self.lbl_detail.config(text=f"{cur_mb:.2f} MB / {tot_mb:.2f} MB ({downloaded}/{total_size} bytes)")
+                            self.lbl_detail.config(text=f"{cur_mb:.1f} MB / {tot_mb:.1f} MB")
 
             self.update_status("Extracting new files...", "Almost ready...", color="#f9e2af")
             extract_dir = os.path.join(temp_dir, "extracted")
@@ -212,7 +244,7 @@ class UpdaterUI(tk.Tk):
             self.cfg["current_version"] = new_ver
             save_config(self.cfg)
 
-            self.update_status("Applying update & restarting...", "Restarting application...", color="#a6e3a1")
+            self.update_status("Applying update & restarting...", "Restarting Goated Macro...", color="#a6e3a1")
             time.sleep(0.8)
             self.apply_batch_update(extract_dir)
 
@@ -249,7 +281,7 @@ del "%~f0" & exit
         with open(bat_path, "w", encoding="utf-8") as f:
             f.write(bat_content)
 
-        subprocess.Popen(["cmd.exe", "/c", bat_path], creationflags=subprocess.CREATE_NO_WINDOW)
+        subprocess.Popen(["cmd.exe", "/c", bat_path], creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
         self.destroy()
         sys.exit(0)
 
@@ -257,16 +289,16 @@ del "%~f0" & exit
         try:
             self.after(0, self.destroy)
         except Exception:
-            try:
-                self.destroy()
-            except Exception:
-                pass
+            pass
 
-def start_updater_check(on_finish=None):
-    app = UpdaterUI()
+def run_updater(force=False, on_finish=None):
+    app = UpdaterUI(on_finish=on_finish, force_check=force)
     app.mainloop()
     if on_finish:
         on_finish()
 
+def start_updater_check(on_finish=None, force=False):
+    run_updater(force=force, on_finish=on_finish)
+
 if __name__ == "__main__":
-    start_updater_check()
+    run_updater(force=True)
